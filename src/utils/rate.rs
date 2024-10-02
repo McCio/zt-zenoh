@@ -17,7 +17,7 @@ pub enum TimeUnit {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Rate {
     pub events: u64,
-    pub time_unit: TimeUnit,
+    pub per_unit_of: TimeUnit,
 }
 
 fn events_per_unit(n: u64, unit: &TimeUnit) -> Duration {
@@ -42,6 +42,15 @@ fn events_per_unit(n: u64, unit: &TimeUnit) -> Duration {
 
 impl From<&Rate> for Duration {
     fn from(rate: &Rate) -> Self {
-        events_per_unit(rate.events, &rate.time_unit)
+        events_per_unit(rate.events, &rate.per_unit_of)
+    }
+}
+pub trait IntervalProvider {
+    fn interval(&self) -> Duration;
+}
+
+impl IntervalProvider for Rate {
+    fn interval(&self) -> Duration {
+        self.into()
     }
 }
