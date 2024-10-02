@@ -21,6 +21,7 @@ pub struct Rate {
 }
 
 fn events_per_unit(n: u64, unit: &TimeUnit) -> Duration {
+    assert!(n > 0, "rate must be positive");
     match unit {
         TimeUnit::Nanoseconds => {
             if n != 1 {
@@ -31,16 +32,16 @@ fn events_per_unit(n: u64, unit: &TimeUnit) -> Duration {
         }
         TimeUnit::Microseconds => Duration::from_nanos(1000u64 / n),
         TimeUnit::Milliseconds => Duration::from_micros(1000u64 / n),
-        TimeUnit::Seconds => Duration::from_millis(1000u64 / n),
-        TimeUnit::Minutes => Duration::from_secs_f64((1f64 / (n as f64)) * 60f64),
-        TimeUnit::Hours => Duration::from_secs_f64((1f64 / (n as f64)) * (60 * 60) as f64),
-        TimeUnit::Days => Duration::from_secs_f64((1f64 / (n as f64)) * (60 * 60 * 24) as f64),
-        TimeUnit::Weeks => Duration::from_secs_f64((1f64 / (n as f64)) * (60 * 60 * 24 * 7) as f64),
+        TimeUnit::Seconds => Duration::from_secs_f64(1f64 / (n as f64)),
+        TimeUnit::Minutes => Duration::from_secs_f64(60f64 / (n as f64)),
+        TimeUnit::Hours => Duration::from_secs_f64(((60 * 60) as f64) / (n as f64)),
+        TimeUnit::Days => Duration::from_secs_f64(((60 * 60 * 24) as f64) / (n as f64)),
+        TimeUnit::Weeks => Duration::from_secs_f64((60 * 60 * 24 * 7) as f64 / (n as f64)),
     }
 }
 
-impl Into<Duration> for &Rate {
-    fn into(self) -> Duration {
-        events_per_unit(self.events, &self.time_unit)
+impl From<&Rate> for Duration {
+    fn from(rate: &Rate) -> Self {
+        events_per_unit(rate.events, &rate.time_unit)
     }
 }
