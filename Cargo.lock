@@ -1716,6 +1716,7 @@ name = "samp"
 version = "0.1.0"
 dependencies = [
  "clippy",
+ "rand",
  "strum_macros",
  "tokio",
  "zenoh",

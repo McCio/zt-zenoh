@@ -1,8 +1,8 @@
+use crate::utils::publisher;
+use crate::utils::rate_producer::RateProducer;
 use std::str::FromStr;
 use strum_macros::Display;
 use zenoh::bytes::ZBytes;
-use crate::utils::publisher;
-use crate::utils::rate_producer::RateProducer;
 
 #[derive(strum_macros::IntoStaticStr, Debug, Display)]
 pub enum Status {
@@ -34,6 +34,7 @@ impl From<ZBytes> for Status {
         o2.parse().unwrap()
     }
 }
+
 impl zenoh::bytes::Deserialize<Status> for zenoh::bytes::ZSerde {
     type Input<'a> = &'a ZBytes;
     type Error = zenoh::Error;

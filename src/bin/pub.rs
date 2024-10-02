@@ -1,4 +1,7 @@
+use tokio::sync::watch::Sender;
 use samp::utils;
+use samp::utils::signals::Status;
+use utils::publisher::Publisher;
 use utils::publisher::FixedIntervalPublisher;
 use utils::rate_producer::RateProducer;
 use utils::rate::Rate;
@@ -7,7 +10,8 @@ use utils::rate::TimeUnit::Seconds;
 #[tokio::main]
 async fn main() {
     let session = zenoh::open(zenoh::Config::default()).await.unwrap();
-    let (publisher, run_status_update) = RateProducer::new_first(
+    let (publisher, run_status_update)
+        = RateProducer::new_first(
         Rate {
             events: 5,
             time_unit: Seconds,
