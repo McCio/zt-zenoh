@@ -48,7 +48,30 @@ where
     Ok(true)
 }
 
-async fn publish_static<'a, T: 'a>(
+pub fn publish_freshly<'a, T: 'a + 'static>(
+    rate: Rate,
+    session: &zenoh::Session,
+    full_key_expr: String,
+    generator: fn() -> T,
+    mut running_watcher: Receiver<bool>,
+    set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
+) where
+    ZBytes: From<T>,
+{
+    let publisher = session
+        .declare_keyexpr(full_key_expr)
+        .wait()
+        .and_then(|key| session.declare_publisher(key).wait())
+        .unwrap();
+
+    let interval = rate.interval();
+
+    set.spawn(async move {
+        publish_fresh::<T>(&mut running_watcher, publisher, interval, generator).await
+    });
+}
+
+async fn publish_static<'a, T>(
     running_watcher: &mut Receiver<bool>,
     publisher: Publisher<'_>,
     interval: Duration,
@@ -56,7 +79,7 @@ async fn publish_static<'a, T: 'a>(
 ) -> Result<bool, Box<dyn Error + Send + Sync>>
 where
     ZBytes: From<T>,
-    T: Clone,
+    T: 'a + Clone,
 {
     wait_until_start(running_watcher).await?;
     println!(
@@ -77,24 +100,46 @@ where
     Ok(true)
 }
 
-pub fn publish_fixed_window_status(
+pub fn publish_statically<'a, T>(
     rate: Rate,
-    key_expr: &'static str,
     session: &zenoh::Session,
-    status: WindowStatus,
+    full_key_expr: String,
+    value: T,
     mut running_watcher: Receiver<bool>,
     set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
-) {
+) where
+    ZBytes: From<T>,
+    T: 'a + 'static + Clone + Send,
+{
     let publisher = session
-        .declare_keyexpr(format!("window/{key_expr}"))
+        .declare_keyexpr(full_key_expr)
         .wait()
         .and_then(|key| session.declare_publisher(key).wait())
         .unwrap();
 
     let interval = rate.interval();
 
-    set.spawn(
-        async move { publish_static(&mut running_watcher, publisher, interval, status).await },
+    set.spawn(async move {
+        publish_static::<T>(&mut running_watcher, publisher, interval, value).await
+    });
+}
+
+pub fn publish_fixed_window_status(
+    rate: Rate,
+    key_expr: &'static str,
+    session: &zenoh::Session,
+    status: WindowStatus,
+    running_watcher: Receiver<bool>,
+    set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
+) {
+    let full_key_expr = format!("window/{key_expr}");
+    publish_statically(
+        rate,
+        session,
+        full_key_expr,
+        status,
+        running_watcher,
+        set,
     );
 }
 
@@ -122,19 +167,17 @@ pub fn publish_fixed_perimeter_status(
     key_expr: &'static str,
     session: &zenoh::Session,
     status: PerimeterStatus,
-    mut running_watcher: Receiver<bool>,
+    running_watcher: Receiver<bool>,
     set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
 ) {
-    let publisher = session
-        .declare_keyexpr(format!("perimeter/{key_expr}"))
-        .wait()
-        .and_then(|key| session.declare_publisher(key).wait())
-        .unwrap();
-
-    let interval = rate.interval();
-
-    set.spawn(
-        async move { publish_static(&mut running_watcher, publisher, interval, status).await },
+    let full_key_expr = format!("perimeter/{key_expr}");
+    publish_statically(
+        rate,
+        session,
+        full_key_expr,
+        status,
+        running_watcher,
+        set,
     );
 }
 
@@ -155,27 +198,4 @@ pub fn publish_random_perimeter_status(
         running_watcher,
         set,
     );
-}
-
-pub fn publish_freshly<'a, T: 'a + 'static>(
-    rate: Rate,
-    session: &zenoh::Session,
-    full_key_expr: String,
-    generator: fn() -> T,
-    mut running_watcher: Receiver<bool>,
-    set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
-) where
-    ZBytes: From<T>,
-{
-    let publisher = session
-        .declare_keyexpr(full_key_expr)
-        .wait()
-        .and_then(|key| session.declare_publisher(key).wait())
-        .unwrap();
-
-    let interval = rate.interval();
-
-    set.spawn(async move {
-        publish_fresh::<T>(&mut running_watcher, publisher, interval, generator).await
-    });
 }
