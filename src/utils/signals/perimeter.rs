@@ -4,7 +4,7 @@ use std::str::FromStr;
 use strum_macros::Display;
 use zenoh::bytes::ZBytes;
 
-#[derive(strum_macros::IntoStaticStr, Debug, Display)]
+#[derive(strum_macros::IntoStaticStr, Debug, Display, Clone)]
 pub enum PerimeterStatus {
     NoMovement,
     SlightMovement,
@@ -13,6 +13,12 @@ pub enum PerimeterStatus {
 
 impl From<&PerimeterStatus> for ZBytes {
     fn from(value: &PerimeterStatus) -> Self {
+        <&'static str>::from(value).into()
+    }
+}
+
+impl From<PerimeterStatus> for ZBytes {
+    fn from(value: PerimeterStatus) -> Self {
         <&'static str>::from(value).into()
     }
 }

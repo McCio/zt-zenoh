@@ -4,7 +4,7 @@ use std::str::FromStr;
 use strum_macros::Display;
 use zenoh::bytes::ZBytes;
 
-#[derive(strum_macros::IntoStaticStr, Debug, Display)]
+#[derive(strum_macros::IntoStaticStr, Debug, Display, Clone)]
 pub enum WindowStatus {
     Closed,
     Opened,
@@ -12,6 +12,12 @@ pub enum WindowStatus {
 
 impl From<&WindowStatus> for ZBytes {
     fn from(value: &WindowStatus) -> Self {
+        <&'static str>::from(value).into()
+    }
+}
+
+impl From<WindowStatus> for ZBytes {
+    fn from(value: WindowStatus) -> Self {
         <&'static str>::from(value).into()
     }
 }
