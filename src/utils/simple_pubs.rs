@@ -1,6 +1,5 @@
 use crate::utils::rate::{IntervalProvider, Rate};
-use crate::utils::signals::WindowStatus;
-use crate::utils::signals::{NewRand, PerimeterStatus};
+use crate::utils::signals::{NewRand, PerimeterStatus, RandFloat, RandInt, RandUint, WindowStatus};
 use std::error::Error;
 use std::time::Duration;
 use tokio::sync::watch::error::RecvError;
@@ -48,7 +47,7 @@ where
     Ok(true)
 }
 
-pub fn publish_freshly<'a, T: 'a + 'static>(
+fn publish_freshly<'a, T>(
     rate: Rate,
     session: &zenoh::Session,
     full_key_expr: String,
@@ -57,6 +56,7 @@ pub fn publish_freshly<'a, T: 'a + 'static>(
     set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
 ) where
     ZBytes: From<T>,
+    T: 'a + 'static,
 {
     let publisher = session
         .declare_keyexpr(full_key_expr)
@@ -100,7 +100,7 @@ where
     Ok(true)
 }
 
-pub fn publish_statically<'a, T>(
+fn publish_statically<'a, T>(
     rate: Rate,
     session: &zenoh::Session,
     full_key_expr: String,
@@ -124,7 +124,7 @@ pub fn publish_statically<'a, T>(
     });
 }
 
-pub fn publish_fixed_window_status(
+pub async fn publish_fixed_window_status(
     rate: Rate,
     key_expr: &'static str,
     session: &zenoh::Session,
@@ -190,6 +190,60 @@ pub fn publish_random_perimeter_status(
 ) {
     let full_key_expr = format!("perimeter/{key_expr}");
     let generator = PerimeterStatus::new_rand;
+    publish_freshly(
+        rate,
+        session,
+        full_key_expr,
+        generator,
+        running_watcher,
+        set,
+    );
+}
+
+pub fn publish_random_float(
+    rate: Rate,
+    session: &zenoh::Session,
+    running_watcher: Receiver<bool>,
+    set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
+) {
+    let full_key_expr = "random/float".to_string();
+    let generator = RandFloat::new_rand;
+    publish_freshly(
+        rate,
+        session,
+        full_key_expr,
+        generator,
+        running_watcher,
+        set,
+    );
+}
+
+pub fn publish_random_int(
+    rate: Rate,
+    session: &zenoh::Session,
+    running_watcher: Receiver<bool>,
+    set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
+) {
+    let full_key_expr = "random/int".to_string();
+    let generator = RandInt::new_rand;
+    publish_freshly(
+        rate,
+        session,
+        full_key_expr,
+        generator,
+        running_watcher,
+        set,
+    );
+}
+
+pub fn publish_random_uint(
+    rate: Rate,
+    session: &zenoh::Session,
+    running_watcher: Receiver<bool>,
+    set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
+) {
+    let full_key_expr = "random/uint".to_string();
+    let generator = RandUint::new_rand;
     publish_freshly(
         rate,
         session,

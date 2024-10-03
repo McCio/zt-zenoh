@@ -1,6 +1,6 @@
 use samp::utils;
 use samp::utils::signals::{PerimeterStatus, WindowStatus};
-use samp::utils::simple_pubs::{publish_fixed_perimeter_status, publish_fixed_window_status, publish_random_perimeter_status, publish_random_window_status};
+use samp::utils::simple_pubs::*;
 use tokio::task::JoinSet;
 use utils::rate::Rate;
 use utils::rate::TimeUnit::Seconds;
@@ -74,6 +74,33 @@ async fn main() {
         run_watch.clone(),
         &mut set,
     );
+    publish_random_float(
+        Rate {
+            events: 2,
+            per_unit_of: Seconds,
+        },
+        &session,
+        run_watch.clone(),
+        &mut set,
+    );
+    publish_random_int(
+        Rate {
+            events: 2,
+            per_unit_of: Seconds,
+        },
+        &session,
+        run_watch.clone(),
+        &mut set,
+    );
+    publish_random_uint(
+        Rate {
+            events: 2,
+            per_unit_of: Seconds,
+        },
+        &session,
+        run_watch.clone(),
+        &mut set,
+    );
     running_write.send_replace(true);
     let sleeper = tokio::task::spawn(async move {
         println!("sleeping 30s");
@@ -82,7 +109,9 @@ async fn main() {
         running_write.send_replace(false);
     });
     while let Some(res) = set.join_next().await {
-        let out = res.expect("Failed to get result").expect("Publishing thread failed");
+        let out = res
+            .expect("Failed to get result") // join error
+            .expect("Publishing thread failed"); // inner-thread error
         assert!(out, "Thread didn't start");
     }
     session.close().await.unwrap();
