@@ -1,7 +1,8 @@
 use samp::utils;
-use samp::utils::signals::{PerimeterStatus, WindowStatus};
-use samp::utils::simple_pubs::*;
+use samp::utils::signals::{NewRand, PerimeterStatus, RandFloat, RandInt, RandUint, WindowStatus};
+use samp::utils::base_pubs::*;
 use tokio::task::JoinSet;
+use samp::utils::r#async::sleep_parking_seconds;
 use utils::rate::Rate;
 use utils::rate::TimeUnit::Seconds;
 
@@ -10,103 +11,113 @@ async fn main() {
     let session = zenoh::open(zenoh::Config::default()).await.unwrap();
     let (running_write, run_watch) = tokio::sync::watch::channel(true);
     let mut set = JoinSet::new();
-    publish_fixed_window_status(
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "window/studio",
         Rate {
             events: 5,
             per_unit_of: Seconds,
         },
-        "studio",
-        &session,
-        WindowStatus::Closed,
-        run_watch.clone(),
-        &mut set,
+        || WindowStatus::Closed,
     );
-    publish_fixed_window_status(
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "window/mezzanine",
         Rate {
             events: 5,
             per_unit_of: Seconds,
         },
-        "mezzanine",
-        &session,
-        WindowStatus::Opened,
-        run_watch.clone(),
-        &mut set,
+        || WindowStatus::Opened,
     );
-    publish_random_window_status(
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "window/front",
         Rate {
             events: 5,
             per_unit_of: Seconds,
         },
-        "front",
-        &session,
-        run_watch.clone(),
-        &mut set,
+        WindowStatus::new_rand,
     );
-    publish_fixed_perimeter_status(
+    
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "perimeter/front",
         Rate {
             events: 5,
             per_unit_of: Seconds,
         },
-        "front",
-        &session,
-        PerimeterStatus::SlightMovement,
-        run_watch.clone(),
-        &mut set,
+        || PerimeterStatus::SlightMovement,
     );
-    publish_fixed_perimeter_status(
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "perimeter/back",
         Rate {
             events: 5,
             per_unit_of: Seconds,
         },
-        "back",
-        &session,
-        PerimeterStatus::NoMovement,
-        run_watch.clone(),
-        &mut set,
+        || PerimeterStatus::NoMovement,
     );
-    publish_random_perimeter_status(
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "perimeter/side",
         Rate {
             events: 5,
             per_unit_of: Seconds,
         },
-        "side",
-        &session,
-        run_watch.clone(),
-        &mut set,
+        PerimeterStatus::new_rand,
     );
-    publish_random_float(
+
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "random/float",
         Rate {
             events: 2,
             per_unit_of: Seconds,
         },
-        &session,
-        run_watch.clone(),
-        &mut set,
+        RandFloat::new_rand,
     );
-    publish_random_int(
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "random/int",
         Rate {
             events: 2,
             per_unit_of: Seconds,
         },
-        &session,
-        run_watch.clone(),
-        &mut set,
+        RandInt::new_rand,
     );
-    publish_random_uint(
+    publish_freshly(
+        &mut set,
+        run_watch.clone(),
+        session.clone(),
+        "random/uint",
         Rate {
             events: 2,
             per_unit_of: Seconds,
         },
-        &session,
-        run_watch.clone(),
-        &mut set,
+        RandUint::new_rand,
     );
     running_write.send_replace(true);
-    let sleeper = tokio::task::spawn(async move {
-        println!("sleeping 30s");
-        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
-        println!("stopping publisher");
+    set.spawn(async move {
+        sleep_parking_seconds(30);
+        println!("stopping publishers");
         running_write.send_replace(false);
+        Ok(true)
     });
     while let Some(res) = set.join_next().await {
         let out = res
@@ -115,5 +126,4 @@ async fn main() {
         assert!(out, "Thread didn't start");
     }
     session.close().await.unwrap();
-    sleeper.await.expect("This shouldn't fail");
 }

@@ -2,7 +2,7 @@ use crate::utils::signals::rnum::NewRand;
 use rand::Rng;
 use std::str::FromStr;
 use strum_macros::Display;
-use zenoh::bytes::ZBytes;
+use zenoh::bytes::{Deserialize, ZBytes, ZSerde};
 
 #[derive(strum_macros::IntoStaticStr, Debug, Display, Clone)]
 pub enum WindowStatus {
@@ -57,7 +57,7 @@ impl From<ZBytes> for WindowStatus {
     }
 }
 
-impl zenoh::bytes::Deserialize<WindowStatus> for zenoh::bytes::ZSerde {
+impl Deserialize<WindowStatus> for ZSerde {
     type Input<'a> = &'a ZBytes;
     type Error = zenoh::Error;
 

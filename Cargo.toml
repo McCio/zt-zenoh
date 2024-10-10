@@ -8,6 +8,8 @@ zenoh = "1.0.0-beta.3"
 tokio = { version = "1.40.0" , features = ["sync"]}
 strum_macros = "0.26.4"
 rand = "0.8.5"
+crossterm_cursor = "0.4.0"
+leapfrog = { version = "0.3.0", features = ["stable_alloc"] }
 
 [dev-dependencies]
 clippy = "0.0.302"
