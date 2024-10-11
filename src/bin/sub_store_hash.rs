@@ -32,16 +32,16 @@ async fn main() {
     )
     .await;
 
-    answer_for_windows(
-        session.clone(),
+    answer_count_for(
         "window".into(),
+        session.clone(),
         Arc::clone(&window_store_lock),
         &mut set,
     )
     .await;
-    answer_for_perimeters(
-        session.clone(),
+    answer_count_for(
         "perimeter".into(),
+        session.clone(),
         Arc::clone(&perimeter_store_lock),
         &mut set,
     )
@@ -65,10 +65,10 @@ async fn make_key<'a>(session: &Session, base: &String) -> (String, KeyExpr<'a>)
     (key_root, key)
 }
 
-async fn answer_for_windows(
-    session: Session,
+async fn answer_count_for<_T: Send + Sync + 'static>(
     base: String,
-    window_store_lock: Arc<RwLock<HashMap<String, (WindowStatus, u64)>>>,
+    session: Session,
+    window_store_lock: Arc<RwLock<HashMap<String, (_T, u64)>>>,
     set: &mut JoinSet<()>,
 ) -> AbortHandle {
     let key_root = format!("runtime_count/{base}/");
@@ -80,32 +80,6 @@ async fn answer_for_windows(
         while let Ok(query) = subscriber.recv() {
             let name = extract_key_name(query.key_expr(), &key_root);
             let guarded_map = window_store_lock.blocking_read();
-            let entry = guarded_map.get(&name);
-            match entry {
-                Some(value) => query.reply(query.key_expr(), &value.1),
-                None => query.reply(query.key_expr(), 0),
-            }
-            .wait()
-            .unwrap();
-        }
-    })
-}
-
-async fn answer_for_perimeters(
-    session: Session,
-    base: String,
-    perimeter_store_lock: Arc<RwLock<HashMap<String, (PerimeterStatus, u64)>>>,
-    set: &mut JoinSet<()>,
-) -> AbortHandle {
-    let key_root = format!("runtime_count/{base}/");
-    let subscriber = session
-        .declare_queryable(format!("{key_root}*"))
-        .await
-        .unwrap();
-    set.spawn_blocking(move || {
-        while let Ok(query) = subscriber.recv() {
-            let name = extract_key_name(query.key_expr(), &key_root);
-            let guarded_map = perimeter_store_lock.blocking_read();
             let entry = guarded_map.get(&name);
             match entry {
                 Some(value) => query.reply(query.key_expr(), &value.1),

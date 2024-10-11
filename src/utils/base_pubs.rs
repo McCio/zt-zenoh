@@ -17,7 +17,7 @@ pub fn is_running(running_receiver: &Receiver<bool>) -> bool {
     *running_receiver.borrow()
 }
 
-pub fn publish_freshly<'b, F, T, TryIntoKeyExpr>(
+pub fn publish_rate<'a, F, T, TryIntoKeyExpr>(
     set: &mut JoinSet<Result<bool, Box<dyn Error + Send + Sync>>>,
     mut running_watcher: Receiver<bool>,
     session: zenoh::Session,
@@ -25,11 +25,11 @@ pub fn publish_freshly<'b, F, T, TryIntoKeyExpr>(
     rate: Rate<>,
     generator: F,
 ) where
-    F: (Fn() -> T) + Send + 'b + 'static,
-    T: 'b + 'static,
+    F: (Fn() -> T) + Send + 'a + 'static,
+    T: 'a + 'static,
     ZBytes: From<T>,
-    TryIntoKeyExpr: TryInto<KeyExpr<'b>> + Send + 'static,
-    <TryIntoKeyExpr as TryInto<KeyExpr<'b>>>::Error: Into<zenoh::Error>,
+    TryIntoKeyExpr: TryInto<KeyExpr<'a>> + Send + 'static,
+    <TryIntoKeyExpr as TryInto<KeyExpr<'a>>>::Error: Into<zenoh::Error>,
 {
     let interval = rate.interval();
 

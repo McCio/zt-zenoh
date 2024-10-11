@@ -11,7 +11,7 @@ async fn main() {
     let session = zenoh::open(zenoh::Config::default()).await.unwrap();
     let (running_write, run_watch) = tokio::sync::watch::channel(true);
     let mut set = JoinSet::new();
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),
@@ -22,7 +22,7 @@ async fn main() {
         },
         || WindowStatus::Closed,
     );
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),
@@ -33,7 +33,7 @@ async fn main() {
         },
         || WindowStatus::Opened,
     );
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),
@@ -45,7 +45,7 @@ async fn main() {
         WindowStatus::new_rand,
     );
     
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),
@@ -56,7 +56,7 @@ async fn main() {
         },
         || PerimeterStatus::SlightMovement,
     );
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),
@@ -67,7 +67,7 @@ async fn main() {
         },
         || PerimeterStatus::NoMovement,
     );
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),
@@ -79,7 +79,7 @@ async fn main() {
         PerimeterStatus::new_rand,
     );
 
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),
@@ -90,7 +90,7 @@ async fn main() {
         },
         RandFloat::new_rand,
     );
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),
@@ -101,7 +101,7 @@ async fn main() {
         },
         RandInt::new_rand,
     );
-    publish_freshly(
+    publish_rate(
         &mut set,
         run_watch.clone(),
         session.clone(),

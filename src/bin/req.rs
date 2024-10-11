@@ -28,7 +28,7 @@ async fn main() {
             let receiver = wpsession.get(&selector).await.unwrap();
             let resp = receiver.recv_async().await.unwrap();
             let count: u64 = resp.into_result().unwrap().payload().deserialize().unwrap();
-            println!("{} {} count: {}", what,  place, count);
+            println!("{} {} count: {}", what, place, count);
             sleep_parking(interval);
         }
         Ok(true)
@@ -45,7 +45,7 @@ async fn main() {
             let receiver = wpsession.get(&selector).await.unwrap();
             let resp = receiver.recv_async().await.unwrap();
             let count: u64 = resp.into_result().unwrap().payload().deserialize().unwrap();
-            println!("{} {} count: {}", what,  place, count);
+            println!("{} {} count: {}", what, place, count);
             sleep_parking(interval);
         }
         Ok(true)
