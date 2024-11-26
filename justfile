@@ -8,8 +8,9 @@ default:
     @just --list
 
 # run noise binaries
-noise mode="server" type="tcp":
+noise mode="server" type="tcp" pkfile="" pubfile="":
     #!/usr/bin/env sh
+    args='--{{mode}}'
     case "{{type}}" in
         tcp)
           bin=noise_simple
@@ -22,13 +23,27 @@ noise mode="server" type="tcp":
                 features=noise,zenoh
                 ;;
               client)
-                bin=znoise_client
+                bin=znoise_client_file
                 features=noise,zenoh
                 ;;
               *)
                 echo -e "{{red}}{{bold}}invalid zenoh noise mode{{normal}}"
                 echo -e "    modes: {{bold}}client{{normal}}, {{bold}}server{{normal}}"
                 exit 1
+                ;;
+          esac
+          case "{{pkfile}}" in
+              "")
+                ;;
+              *)
+                args="${args} "'--key-file {{pkfile}}'
+                ;;
+          esac
+          case "{{pubfile}}" in
+              "")
+                ;;
+              *)
+                args="${args} "'--remote-public-key-file {{pubfile}}'
                 ;;
           esac
           ;;
@@ -43,4 +58,4 @@ noise mode="server" type="tcp":
           ;;
     esac
     set -x
-    cargo run --color=always --package keybased --profile release --bin $bin --features $features -- --{{mode}}
+    cargo run --color=always --package keybased --profile release --bin $bin --features $features -- $args
