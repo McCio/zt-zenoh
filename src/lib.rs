@@ -1,9 +1,13 @@
+#[cfg(feature = "noise")]
 use std::path::PathBuf;
+#[cfg(feature = "noise")]
 use snow::Builder;
+#[cfg(feature = "noise")]
 use std::fs::{read, write};
 
 pub mod utils;
 
+#[cfg(feature = "noise")]
 pub fn prepare_private_key(private_key: Option<&PathBuf>, builder: &Builder) -> Vec<u8> {
     // prepare private static key: make a new one (and write to file) or read from file
     private_key

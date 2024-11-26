@@ -4,6 +4,7 @@
 )]
 
 use lazy_static::lazy_static;
+#[cfg(feature = "noise")]
 use snow::{params::NoiseParams, Builder};
 use std::{
     io::{self, Read, Write},
@@ -12,6 +13,7 @@ use std::{
 use std::process::exit;
 
 static SECRET: &[u8; 32] = b"i don't care for fidget spinners";
+#[cfg(feature = "noise")]
 lazy_static! {
     static ref PARAMS: NoiseParams = "Noise_XXpsk3_25519_ChaChaPoly_BLAKE2s".parse().unwrap();
 }
