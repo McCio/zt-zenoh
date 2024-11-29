@@ -23,9 +23,11 @@ nigthly = ["rand/simd_support", "snow?/nightly"]
 [[bin]]
 name = "znoise_client"
 required-features = ["zenoh", "noise"]
+
 [[bin]]
 name = "znoise_client_file"
 required-features = ["zenoh", "noise"]
+
 [[bin]]
 name = "znoise_server"
 required-features = ["zenoh", "noise"]

@@ -9,7 +9,8 @@ static NOISE_DEF_PARAMS: &str = "Noise_IXpsk2_25519_ChaChaPoly_BLAKE2s";
 static NOISE_DEF_PARAMS_SERVERPUB_KNOWN: &str = "Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s";
 lazy_static! {
     static ref PARAMS: NoiseParams = NOISE_DEF_PARAMS.parse().unwrap();
-    static ref PARAMS_SERVERPUB_KNOWN: NoiseParams = NOISE_DEF_PARAMS_SERVERPUB_KNOWN.parse().unwrap();
+    static ref PARAMS_SERVERPUB_KNOWN: NoiseParams =
+        NOISE_DEF_PARAMS_SERVERPUB_KNOWN.parse().unwrap();
 }
 
 use clap::{arg, Command};
@@ -68,7 +69,16 @@ async fn main() {
                 .and_then(|k| Ok(Some(k)))
                 .unwrap_or_else(|_| None)
         });
-    let mut noise = initialize_noise_client(if rpk.is_some() {PARAMS_SERVERPUB_KNOWN.clone()} else {PARAMS.clone()}, private_key, remote_public_key, SECRET);
+    let mut noise = initialize_noise_client(
+        if rpk.is_some() {
+            PARAMS_SERVERPUB_KNOWN.clone()
+        } else {
+            PARAMS.clone()
+        },
+        private_key,
+        remote_public_key,
+        SECRET,
+    );
 
     let mut buf = vec![0u8; 65535];
     let session = zenoh::open(zenoh::Config::default()).await.unwrap();
@@ -76,7 +86,11 @@ async fn main() {
     // -> e
     let len = noise.write_message(&[], &mut buf).unwrap();
     let query = session
-        .get(if rpk.is_some() {format!("secure_registration/{}", NOISE_DEF_PARAMS_SERVERPUB_KNOWN)} else {"secure_registration".to_string()})
+        .get(if rpk.is_some() {
+            format!("secure_registration/{}", NOISE_DEF_PARAMS_SERVERPUB_KNOWN)
+        } else {
+            "secure_registration".to_string()
+        })
         // .get(format!("secure_registration/{}", NOISE_DEF_PARAMS))
         .accept_replies(ReplyKeyExpr::Any)
         .payload(&buf[..len])
@@ -99,7 +113,10 @@ async fn main() {
         if !path.exists() {
             let _ = write(path, noise.get_remote_static().unwrap()).is_ok();
         } else {
-            assert!(read(path).unwrap().eq(noise.get_remote_static().unwrap()), "talking to the wrong server");
+            assert!(
+                read(path).unwrap().eq(noise.get_remote_static().unwrap()),
+                "talking to the wrong server"
+            );
         }
     }
 
