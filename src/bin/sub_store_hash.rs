@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tokio::task::{AbortHandle, JoinSet};
+use zenoh::bytes::ZBytes;
 use zenoh::key_expr::KeyExpr;
 use zenoh::sample::SampleKind::Delete;
 use zenoh::{Session, Wait};
@@ -82,8 +83,8 @@ async fn answer_count_for<_T: Send + Sync + 'static>(
             let guarded_map = window_store_lock.blocking_read();
             let entry = guarded_map.get(&name);
             match entry {
-                Some(value) => query.reply(query.key_expr(), &value.1),
-                None => query.reply(query.key_expr(), 0),
+                Some(value) => query.reply(query.key_expr(), value.1.to_be_bytes()),
+                None => query.reply(query.key_expr(), 0_u64.to_be_bytes()),
             }
             .wait()
             .unwrap();
@@ -112,7 +113,7 @@ async fn hear_for_windows(
                 println!("stats for window {name} removed, previous count: {previous_count}");
                 continue;
             }
-            if let Ok(x) = sample.payload().deserialize::<WindowStatus>() {
+            if let Ok(x) = <&ZBytes as TryInto<WindowStatus>>::try_into(sample.payload()) {
                 let write_guard = Arc::clone(&mem_store);
                 let count = write_guard
                     .blocking_write()
@@ -151,7 +152,7 @@ async fn hear_for_perimeters(
                 println!("stats for perimeter {name} removed, previous count: {previous_count}");
                 continue;
             }
-            if let Ok(x) = sample.payload().deserialize::<PerimeterStatus>() {
+            if let Ok(x) = <&ZBytes as TryInto<PerimeterStatus>>::try_into(sample.payload()) {
                 let write_guard = Arc::clone(&mem_store);
                 let count = write_guard
                     .blocking_write()

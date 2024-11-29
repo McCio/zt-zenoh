@@ -2,6 +2,7 @@ use samp::utils;
 use samp::utils::base_pubs::*;
 use samp::utils::r#async::{sleep_parking, sleep_parking_seconds};
 use samp::utils::rate::IntervalProvider;
+use std::io;
 use tokio::task::JoinSet;
 use utils::rate::Rate;
 use utils::rate::TimeUnit::Seconds;
@@ -27,7 +28,20 @@ async fn main() {
         while is_running(&watcher) {
             let receiver = wpsession.get(&selector).await.unwrap();
             let resp = receiver.recv_async().await.unwrap();
-            let count: u64 = resp.into_result().unwrap().payload().deserialize().unwrap();
+            let count = u64::from_be_bytes(
+                resp.result()
+                    .map_err(|_| io::ErrorKind::NotSeekable)
+                    .and_then(|r| {
+                        let bs = r.payload().to_bytes();
+                        if bs.len() == 8 {
+                            let carr: [u8; 8] = bs[0..8].try_into().unwrap();
+                            Ok(carr)
+                        } else {
+                            Err(io::ErrorKind::InvalidData)
+                        }
+                    })
+                    .unwrap(),
+            );
             println!("{} {} count: {}", what, place, count);
             sleep_parking(interval);
         }
@@ -44,7 +58,20 @@ async fn main() {
         while is_running(&watcher) {
             let receiver = wpsession.get(&selector).await.unwrap();
             let resp = receiver.recv_async().await.unwrap();
-            let count: u64 = resp.into_result().unwrap().payload().deserialize().unwrap();
+            let count = u64::from_be_bytes(
+                resp.result()
+                    .map_err(|_| io::ErrorKind::NotSeekable)
+                    .and_then(|r| {
+                        let bs = r.payload().to_bytes();
+                        if bs.len() == 8 {
+                            let carr: [u8; 8] = bs[0..8].try_into().unwrap();
+                            Ok(carr)
+                        } else {
+                            Err(io::ErrorKind::InvalidData)
+                        }
+                    })
+                    .unwrap(),
+            );
             println!("{} {} count: {}", what, place, count);
             sleep_parking(interval);
         }

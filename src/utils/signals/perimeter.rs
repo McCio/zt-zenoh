@@ -53,20 +53,12 @@ impl From<&u32> for PerimeterStatus {
     }
 }
 
-impl From<ZBytes> for PerimeterStatus {
-    fn from(value: ZBytes) -> Self {
-        let o2: String = value.deserialize().unwrap();
-        o2.parse().unwrap()
-    }
-}
-
-impl zenoh::bytes::Deserialize<PerimeterStatus> for zenoh::bytes::ZSerde {
-    type Input<'a> = &'a ZBytes;
+impl TryFrom<&ZBytes> for PerimeterStatus {
     type Error = zenoh::Error;
 
-    fn deserialize(self, t: Self::Input<'_>) -> Result<PerimeterStatus, Self::Error> {
-        match t.deserialize::<String>() {
-            Ok(x) => x.parse(),
+    fn try_from(value: &ZBytes) -> Result<Self, Self::Error> {
+        match value.try_to_string() {
+            Ok(v) => v.to_string().parse::<PerimeterStatus>(),
             Err(e) => Err(e.into()),
         }
     }

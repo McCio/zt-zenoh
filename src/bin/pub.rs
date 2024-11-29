@@ -1,8 +1,8 @@
 use samp::utils;
-use samp::utils::signals::{NewRand, PerimeterStatus, RandFloat, RandInt, RandUint, WindowStatus};
 use samp::utils::base_pubs::*;
-use tokio::task::JoinSet;
 use samp::utils::r#async::sleep_parking_seconds;
+use samp::utils::signals::{NewRand, PerimeterStatus, RandFloat, RandInt, RandUint, WindowStatus};
+use tokio::task::JoinSet;
 use utils::rate::Rate;
 use utils::rate::TimeUnit::Seconds;
 
@@ -44,7 +44,7 @@ async fn main() {
         },
         WindowStatus::new_rand,
     );
-    
+
     publish_rate(
         &mut set,
         run_watch.clone(),
@@ -88,7 +88,7 @@ async fn main() {
             events: 2,
             per_unit_of: Seconds,
         },
-        RandFloat::new_rand,
+        || RandFloat::new_rand().to_be_bytes(),
     );
     publish_rate(
         &mut set,
@@ -99,7 +99,7 @@ async fn main() {
             events: 2,
             per_unit_of: Seconds,
         },
-        RandInt::new_rand,
+        || RandInt::new_rand().to_be_bytes(),
     );
     publish_rate(
         &mut set,
@@ -110,7 +110,7 @@ async fn main() {
             events: 2,
             per_unit_of: Seconds,
         },
-        RandUint::new_rand,
+        || RandUint::new_rand().to_be_bytes(),
     );
     running_write.send_replace(true);
     set.spawn(async move {
