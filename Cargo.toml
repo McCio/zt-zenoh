@@ -1,15 +1,33 @@
 [package]
 name = "samp"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-zenoh = "1"
-tokio = { version = "1.40.0" , features = ["sync"]}
-strum_macros = "0.26.4"
+snow = { version = "0.9.6", optional = true }
+tokio = { version = "1.41.1", features = ["sync"] }
+zenoh = { version = "1.0.3", optional = true, features = ["unstable"] }
+lazy_static = "1.5.0"
 rand = "0.8.5"
-crossterm_cursor = "0.4.0"
-leapfrog = { version = "0.3.0", features = ["stable_alloc"] }
+strum_macros = "0.26.4"
+base16ct = { version = "0.2.0", features = ["alloc"] }
+clap = "4.5.21"
 
-[dev-dependencies]
-clippy = "0.0.302"
+[features]
+default = ["zenoh"]
+noise = ["dep:snow"]
+noise-ring = ["noise", "snow/ring-accelerated"]
+zenoh = ["dep:zenoh"]
+nigthly = ["rand/simd_support", "snow?/nightly"]
+
+[[bin]]
+name = "znoise_client"
+required-features = ["zenoh", "noise"]
+
+[[bin]]
+name = "znoise_client_file"
+required-features = ["zenoh", "noise"]
+
+[[bin]]
+name = "znoise_server"
+required-features = ["zenoh", "noise"]
