@@ -4,7 +4,9 @@ use snow::{params::NoiseParams, Builder, HandshakeState};
 use std::fs::read;
 use std::path::PathBuf;
 use tokio::task::{JoinHandle, JoinSet};
-use zenoh::Session;
+use zenoh::query::Query;
+use zenoh::sample::SampleKind;
+use zenoh::{Session, Wait};
 
 static SECRET: &[u8; 32] = b"i don't care for fidget spinners";
 static NOISE_FOR_NEWBY_CLIENT: &str = "Noise_IXpsk2_25519_ChaChaPoly_BLAKE2s";
@@ -14,7 +16,6 @@ lazy_static! {
     static ref PARAMS_PRO: NoiseParams = NOISE_FOR_PRO_CLIENT.parse().unwrap();
 }
 
-#[cfg(all(feature = "noise", feature = "zenoh"))]
 #[tokio::main]
 async fn main() {
     let session = zenoh::open(zenoh::Config::default()).await.unwrap();
@@ -79,70 +80,96 @@ async fn hear_for_device(
     prms: NoiseParams,
     pk: Vec<u8>,
 ) -> JoinHandle<()> {
-    let subscriber = session.declare_queryable(key_expr).await.unwrap();
+    let subscriber = session.declare_queryable(key_expr).wait().unwrap();
     tokio::task::spawn(async move {
         let mut set = JoinSet::new();
-        while let Ok(query) = subscriber.recv_async().await {
-            let mut buf: Vec<u8>;
-            let mut noise: HandshakeState;
-            if let Some(payload) = query.payload() {
-                noise = initialize_noise_server(prms.clone(), &*pk, SECRET);
-                buf = vec![0u8; 65535];
-                // <- e
-                noise.read_message(&*payload.to_bytes(), &mut buf).unwrap();
-            } else {
-                continue;
+        while let Ok(query) = subscriber.recv() {
+            if let Some(_) = query.payload() {
+                let session = session.clone();
+                let prms = prms.clone();
+                let pk = pk.clone();
+                set.spawn_blocking(move || device_handshake(session, prms, pk, query));
             }
-
-            // -> e, ee, s, es
-            let len = noise
-                .write_message(&[], &mut buf)
-                .expect("failed to prepare handshake first response");
-            let rsh256 = base16ct::lower::encode_string(
-                noise.get_remote_static().expect("should know it by now"),
-            );
-            let device_keyexpr = format!("secure_comm/{}", rsh256);
-
-            // session.clone().undeclare(session.declare_keyexpr(device_keyexpr.clone()).await.unwrap()).await.unwrap();
-            // TODO check z_liveliness, z_sub_liveliness and z_get_liveliness examples
-            //  to avoid multiple listeners when a client disconnected
-            let device_sub = session
-                .clone()
-                .declare_subscriber(device_keyexpr.clone())
-                .await
-                .unwrap();
-            set.spawn(async move {
-                let mut noise_transport;
-                noise_transport = noise.into_transport_mode().unwrap();
-                while let Ok(sample) = device_sub.recv_async().await {
-                    let mut buf = vec![0u8; 65535];
-                    let decrypt =
-                        noise_transport.read_message(&*sample.payload().to_bytes(), &mut buf);
-                    if decrypt.is_err() {
-                        // this is split to avoid DoS
-                        eprintln!("received invalid payload on reserved channel for {}", rsh256);
-                        continue;
-                    }
-                    let len = decrypt.unwrap();
-                    println!(
-                        "client {} said: {}",
-                        rsh256,
-                        String::from_utf8_lossy(&buf[..len])
-                    );
-                }
-                println!("client {} disconnected", rsh256);
-                device_sub.undeclare().await.unwrap();
-            });
-
-            query
-                .reply(device_keyexpr, &buf[..len])
-                .await
-                .expect("failed to send handshake first response");
         }
     })
 }
 
-#[cfg(not(all(feature = "noise", feature = "zenoh")))]
-fn main() {
-    panic!("Cannot start zenoh noise server without noise enabled.");
+fn device_handshake(
+    session: Session,
+    prms: NoiseParams,
+    pk: Vec<u8>,
+    query: Query,
+) -> JoinHandle<()> {
+    let Some(payload) = query.payload() else { unreachable!() };
+    let mut buf: Vec<u8>;
+    let mut noise: HandshakeState;
+    noise = initialize_noise_server(prms, &*pk, SECRET);
+    buf = vec![0u8; 65535];
+    // <- e
+    noise.read_message(&*payload.to_bytes(), &mut buf).unwrap();
+
+    // -> e, ee, s, es
+    let len = noise
+        .write_message(&[], &mut buf)
+        .expect("failed to prepare handshake first response");
+    let rsh256 =
+        base16ct::lower::encode_string(noise.get_remote_static().expect("should know it by now"));
+    let device_keyexpr = format!("secure_comm/{}", rsh256);
+
+    // TODO check z_liveliness, z_sub_liveliness and z_get_liveliness examples
+    //  to avoid multiple listeners when a client disconnected
+    let device_sub = session
+        .declare_subscriber(device_keyexpr.clone())
+        .wait()
+        .unwrap();
+    let ds_for_live = device_sub.clone();
+    let abort_secure_comm = tokio::runtime::Handle::current().spawn_blocking(move || {
+        let mut noise_transport;
+        noise_transport = noise.into_transport_mode().unwrap();
+        while let Ok(sample) = ds_for_live.recv() {
+            let mut buf = vec![0u8; 65535];
+            let decrypt = noise_transport.read_message(&*sample.payload().to_bytes(), &mut buf);
+            if decrypt.is_err() {
+                // this is split to avoid DoS
+                eprintln!(
+                    "received invalid payload on reserved channel for {}",
+                    rsh256
+                );
+                continue;
+            }
+            let len = decrypt.unwrap();
+            println!(
+                "client {} said: {}",
+                rsh256,
+                String::from_utf8_lossy(&buf[..len])
+            );
+        }
+        println!("client {} disconnected", rsh256);
+    });
+    let live_ke = device_keyexpr.clone();
+    let hear_for_liveliness = tokio::runtime::Handle::current().spawn_blocking(move || {
+        let subscriber = session
+            .liveliness()
+            .declare_subscriber(live_ke.clone())
+            .wait()
+            .unwrap();
+        while let Ok(sample) = subscriber.recv() {
+            match sample.kind() {
+                SampleKind::Put => println!("New liveliness: {}", sample.key_expr()),
+                SampleKind::Delete => {
+                    println!("Lost liveliness: {}", sample.key_expr());
+                    // this actually depends on the scheduler: we might lose some messages
+                    abort_secure_comm.abort();
+                    device_sub.undeclare().wait().unwrap();
+                    return;
+                }
+            }
+        }
+    });
+
+    query
+        .reply(device_keyexpr, &buf[..len])
+        .wait()
+        .expect("failed to send handshake first response");
+    hear_for_liveliness
 }

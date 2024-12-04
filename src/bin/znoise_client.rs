@@ -105,11 +105,12 @@ async fn main() {
         .unwrap();
 
     let comm_keyexpr = result.key_expr();
+    // TODO should be able to to this in advance, as this is just secure_comm/public_key
+    let _ = session.liveliness().declare_token(comm_keyexpr).await.unwrap();
 
     let mut noise = noise.into_transport_mode().unwrap();
     println!("session established...");
-    if remote_public_key.is_some() {
-        let path = remote_public_key.unwrap();
+    if let Some(path) = remote_public_key {
         if !path.exists() {
             let _ = write(path, noise.get_remote_static().unwrap()).is_ok();
         } else {

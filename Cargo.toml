@@ -21,6 +21,26 @@ zenoh = ["dep:zenoh"]
 nigthly = ["rand/simd_support", "snow?/nightly"]
 
 [[bin]]
+name = "pub"
+required-features = ["zenoh"]
+[[bin]]
+name = "req"
+required-features = ["zenoh"]
+[[bin]]
+name = "sub"
+required-features = ["zenoh"]
+[[bin]]
+name = "sub_store_hash"
+required-features = ["zenoh"]
+[[bin]]
+name = "sub_store_nums"
+required-features = ["zenoh"]
+
+[[bin]]
+name = "noise_simple"
+required-features = ["noise"]
+
+[[bin]]
 name = "znoise_client"
 required-features = ["zenoh", "noise"]
 
