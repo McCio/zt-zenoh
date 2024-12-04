@@ -23,7 +23,7 @@ noise mode="server" type="tcp" pkfile="" pubfile="":
                 features=noise,zenoh
                 ;;
               client)
-                bin=znoise_client_file
+                bin=znoise_client
                 features=noise,zenoh
                 ;;
               *)
