@@ -58,4 +58,4 @@ noise mode="server" type="tcp" pkfile="" pubfile="":
           ;;
     esac
     set -x
-    cargo run --color=always --package samp --profile release --bin $bin --features $features -- $args
+    cargo run --color=always --package samp --bin $bin --features $features -- $args

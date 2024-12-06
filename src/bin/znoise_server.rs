@@ -1,11 +1,13 @@
 use clap::{arg, Command};
 use lazy_static::lazy_static;
-use snow::{params::NoiseParams, Builder, HandshakeState};
+use snow::{params::NoiseParams, Builder, Error, HandshakeState};
 use std::fs::read;
 use std::path::PathBuf;
-use tokio::task::{JoinHandle, JoinSet};
+use std::time::Duration;
+use tokio::runtime::Handle;
+use tokio::task::{JoinError, JoinHandle};
 use zenoh::query::Query;
-use zenoh::sample::SampleKind;
+use zenoh::sample::{Sample, SampleKind};
 use zenoh::{Session, Wait};
 
 static SECRET: &[u8; 32] = b"i don't care for fidget spinners";
@@ -66,12 +68,11 @@ fn initialize_noise_server(
     params: NoiseParams,
     static_key: &[u8],
     secret: &[u8],
-) -> HandshakeState {
+) -> Result<HandshakeState, Error> {
     Builder::new(params)
         .local_private_key(static_key)
         .psk(2, secret)
         .build_responder()
-        .unwrap()
 }
 
 async fn hear_for_device(
@@ -81,52 +82,100 @@ async fn hear_for_device(
     pk: Vec<u8>,
 ) -> JoinHandle<()> {
     let subscriber = session.declare_queryable(key_expr).wait().unwrap();
-    tokio::task::spawn(async move {
-        let mut set = JoinSet::new();
+    tokio::task::spawn_blocking(move || {
+        let mut runtimes: Vec<tokio::runtime::Runtime> = Vec::new();
+        // let mut set = JoinSet::new();
         while let Ok(query) = subscriber.recv() {
             if let Some(_) = query.payload() {
                 let session = session.clone();
                 let prms = prms.clone();
                 let pk = pk.clone();
-                set.spawn_blocking(move || device_handshake(session, prms, pk, query));
+
+                let expr = query.key_expr().clone();
+                let rt = tokio::runtime::Builder::new_multi_thread()
+                    .enable_all()
+                    // .worker_threads(8)
+                    .thread_name(expr.clone())
+                    // .max_blocking_threads(4)
+                    .build()
+                    .unwrap();
+                //rt.handle().clone()
+                tokio::runtime::Handle::current().spawn(async {
+                    println!("starting all correctly");
+                    match device_handshake(session, prms, pk, query).await {
+                        Ok(_) => println!("done all correctly"),
+                        Err(e) => eprintln!("{:?}", e),
+                    };
+                    println!("done all correctly");
+                });
+                runtimes.push(rt);
+            } else {
+                match query.reply_err([]).wait() {
+                    Ok(_) => {}
+                    Err(_) => {}
+                }
             }
+        }
+        // tokio::runtime::Handle::current().block_on(set.join_all());
+        for rt in runtimes {
+            rt.shutdown_timeout(Duration::from_secs(1));
         }
     })
 }
 
-fn device_handshake(
+async fn device_handshake(
     session: Session,
     prms: NoiseParams,
     pk: Vec<u8>,
     query: Query,
-) -> JoinHandle<()> {
-    let Some(payload) = query.payload() else { unreachable!() };
-    let mut buf: Vec<u8>;
+) -> Result<(), JoinError> {
+    println!("starting device handshake");
+    let Some(payload) = query.payload() else {
+        unreachable!()
+    };
+    let mut buf: Vec<u8> = vec![0u8; 65535];
     let mut noise: HandshakeState;
-    noise = initialize_noise_server(prms, &*pk, SECRET);
-    buf = vec![0u8; 65535];
+    match initialize_noise_server(prms, &*pk, SECRET) {
+        Ok(n) => noise = n,
+        Err(e) => {
+            query.reply_err([]).await.unwrap();
+            panic!("Cannot initialize noise server: {}", e);
+        }
+    }
     // <- e
-    noise.read_message(&*payload.to_bytes(), &mut buf).unwrap();
+    match noise.read_message(&*payload.to_bytes(), &mut buf) {
+        Ok(_) => println!("received first message OK"),
+        Err(e) => {
+            query.reply_err([]).await.unwrap();
+            panic!("Cannot resolve initial message: {}", e);
+        }
+    }
 
     // -> e, ee, s, es
     let len = noise
         .write_message(&[], &mut buf)
         .expect("failed to prepare handshake first response");
-    let rsh256 =
-        base16ct::lower::encode_string(noise.get_remote_static().expect("should know it by now"));
-    let device_keyexpr = format!("secure_comm/{}", rsh256);
+    println!("prepared first message to send");
 
-    // TODO check z_liveliness, z_sub_liveliness and z_get_liveliness examples
-    //  to avoid multiple listeners when a client disconnected
+    let mut noise_transport;
+    noise_transport = noise.into_transport_mode().unwrap();
+    let rsh256 = base16ct::lower::encode_string(
+        noise_transport
+            .get_remote_static()
+            .expect("should know it by now"),
+    );
+    let device_keyexpr = format!("secure_comm/{}", rsh256);
+    let remote_sha256 = rsh256.clone();
+
     let device_sub = session
         .declare_subscriber(device_keyexpr.clone())
-        .wait()
+        .await
         .unwrap();
     let ds_for_live = device_sub.clone();
-    let abort_secure_comm = tokio::runtime::Handle::current().spawn_blocking(move || {
-        let mut noise_transport;
-        noise_transport = noise.into_transport_mode().unwrap();
-        while let Ok(sample) = ds_for_live.recv() {
+    let (sched_writer, mut run_watch) = tokio::sync::mpsc::channel::<Sample>(1);
+    let handle = tokio::runtime::Handle::current();
+    let actual_consumer = handle.spawn_blocking(move || {
+        while let Some(sample) = run_watch.blocking_recv() {
             let mut buf = vec![0u8; 65535];
             let decrypt = noise_transport.read_message(&*sample.payload().to_bytes(), &mut buf);
             if decrypt.is_err() {
@@ -138,38 +187,44 @@ fn device_handshake(
                 continue;
             }
             let len = decrypt.unwrap();
-            println!(
-                "client {} said: {}",
-                rsh256,
-                String::from_utf8_lossy(&buf[..len])
-            );
+            println!("{} said: {}", rsh256, String::from_utf8_lossy(&buf[..len]));
         }
-        println!("client {} disconnected", rsh256);
     });
-    let live_ke = device_keyexpr.clone();
-    let hear_for_liveliness = tokio::runtime::Handle::current().spawn_blocking(move || {
-        let subscriber = session
-            .liveliness()
-            .declare_subscriber(live_ke.clone())
-            .wait()
-            .unwrap();
-        while let Ok(sample) = subscriber.recv() {
+
+    let abort_secure_comm = handle.spawn_blocking(move || {
+        while let Ok(sample) = ds_for_live.recv() {
+            sched_writer.blocking_send(sample).unwrap();
+        }
+        println!("{} disconnected", remote_sha256);
+    });
+    let life_subscriber = session
+        .liveliness()
+        .declare_subscriber(device_keyexpr.clone())
+        .wait()
+        .unwrap();
+    let hear_for_liveliness = handle.spawn_blocking(move || {
+        while let Ok(sample) = life_subscriber.recv() {
             match sample.kind() {
-                SampleKind::Put => println!("New liveliness: {}", sample.key_expr()),
+                SampleKind::Put => println!("{} is alive", sample.key_expr()),
                 SampleKind::Delete => {
-                    println!("Lost liveliness: {}", sample.key_expr());
-                    // this actually depends on the scheduler: we might lose some messages
-                    abort_secure_comm.abort();
+                    println!("{} is dead", sample.key_expr());
+                    // we might lose some messages: it actually depends on the scheduler
                     device_sub.undeclare().wait().unwrap();
-                    return;
+                    // maybe aborting the other thread is safer? don't like to kill
+                    // abort_secure_comm.abort();
+                    break;
                 }
             }
         }
     });
 
+    println!("sending final handshake message");
     query
         .reply(device_keyexpr, &buf[..len])
         .wait()
         .expect("failed to send handshake first response");
-    hear_for_liveliness
+    println!("sending final handshake message sent");
+    hear_for_liveliness.await
+        .and(abort_secure_comm.await)
+        .and(actual_consumer.await)
 }

@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use snow::{params::NoiseParams, Builder, HandshakeState};
 use std::fs::{read, write};
 use std::path::PathBuf;
-use zenoh::query::ReplyKeyExpr;
+use zenoh::query::{Reply, ReplyKeyExpr};
 
 static SECRET: &[u8; 32] = b"i don't care for fidget spinners";
 static NOISE_DEF_PARAMS: &str = "Noise_IXpsk2_25519_ChaChaPoly_BLAKE2s";
@@ -14,6 +14,8 @@ lazy_static! {
 }
 
 use clap::{arg, Command};
+use zenoh::handlers::FifoChannelHandler;
+use zenoh::Session;
 
 fn cli() -> Command {
     Command::new("client")
@@ -85,19 +87,14 @@ async fn main() {
 
     // -> e
     let len = noise.write_message(&[], &mut buf).unwrap();
-    let query = session
-        .get(if rpk.is_some() {
-            format!("secure_registration/{}", NOISE_DEF_PARAMS_SERVERPUB_KNOWN)
-        } else {
-            "secure_registration".to_string()
-        })
-        // .get(format!("secure_registration/{}", NOISE_DEF_PARAMS))
-        .accept_replies(ReplyKeyExpr::Any)
-        .payload(&buf[..len])
-        .await
-        .unwrap();
-
-    let reply = query.recv().unwrap();
+    let reply = loop {
+        let reply = register(&rpk, &mut buf, &session, len).await.recv();
+        match reply {
+            Ok(reply) => break reply,
+            Err(e) => eprintln!("Still nothing: {:?}", e),
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    };
     let result = reply.into_result().unwrap();
     // <- e, ee, se, s, es
     noise
@@ -106,7 +103,11 @@ async fn main() {
 
     let comm_keyexpr = result.key_expr();
     // TODO should be able to to this in advance, as this is just secure_comm/public_key
-    let _ = session.liveliness().declare_token(comm_keyexpr).await.unwrap();
+    let _ = session
+        .liveliness()
+        .declare_token(comm_keyexpr)
+        .await
+        .unwrap();
 
     let mut noise = noise.into_transport_mode().unwrap();
     println!("session established...");
@@ -127,6 +128,20 @@ async fn main() {
         session.put(comm_keyexpr, &buf[..len]).await.unwrap();
     }
     println!("notified server of intent to hack planet.");
+}
+
+async fn register(rpk: &Option<Vec<u8>>, buf: &mut Vec<u8>, session: &Session, len: usize) -> FifoChannelHandler<Reply> {
+    session
+        .get(if rpk.is_some() {
+            format!("secure_registration/{}", NOISE_DEF_PARAMS_SERVERPUB_KNOWN)
+        } else {
+            "secure_registration".to_string()
+        })
+        // .get(format!("secure_registration/{}", NOISE_DEF_PARAMS))
+        .accept_replies(ReplyKeyExpr::Any)
+        .payload(&buf[..len])
+        .await
+        .unwrap()
 }
 
 #[cfg(not(all(feature = "noise", feature = "zenoh")))]
