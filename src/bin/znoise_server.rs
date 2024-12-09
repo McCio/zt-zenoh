@@ -2,10 +2,10 @@ use clap::{arg, Command};
 use lazy_static::lazy_static;
 use snow::{params::NoiseParams, Builder, Error, HandshakeState};
 use std::fs::read;
+use std::future::IntoFuture;
 use std::path::PathBuf;
 use std::time::Duration;
-use tokio::runtime::Handle;
-use tokio::task::{JoinError, JoinHandle};
+use tokio::task::{JoinError, JoinHandle, JoinSet};
 use zenoh::query::Query;
 use zenoh::sample::{Sample, SampleKind};
 use zenoh::{Session, Wait};
@@ -84,7 +84,7 @@ async fn hear_for_device(
     let subscriber = session.declare_queryable(key_expr).wait().unwrap();
     tokio::task::spawn_blocking(move || {
         let mut runtimes: Vec<tokio::runtime::Runtime> = Vec::new();
-        // let mut set = JoinSet::new();
+        let mut set = JoinSet::new();
         while let Ok(query) = subscriber.recv() {
             if let Some(_) = query.payload() {
                 let session = session.clone();
@@ -95,19 +95,21 @@ async fn hear_for_device(
                 let rt = tokio::runtime::Builder::new_multi_thread()
                     .enable_all()
                     // .worker_threads(8)
-                    .thread_name(expr.clone())
+                    .thread_name(expr)
                     // .max_blocking_threads(4)
                     .build()
                     .unwrap();
-                //rt.handle().clone()
-                tokio::runtime::Handle::current().spawn(async {
-                    println!("starting all correctly");
-                    match device_handshake(session, prms, pk, query).await {
-                        Ok(_) => println!("done all correctly"),
-                        Err(e) => eprintln!("{:?}", e),
-                    };
-                    println!("done all correctly");
-                });
+                set.spawn_blocking_on(
+                    || {
+                        println!("starting all correctly");
+                        match device_handshake(session, prms, pk, query) {
+                            Ok(_) => println!("done all correctly"),
+                            Err(e) => eprintln!("{:?}", e),
+                        };
+                        println!("done all correctly");
+                    },
+                    &rt.handle(),
+                );
                 runtimes.push(rt);
             } else {
                 match query.reply_err([]).wait() {
@@ -116,14 +118,14 @@ async fn hear_for_device(
                 }
             }
         }
-        // tokio::runtime::Handle::current().block_on(set.join_all());
+        tokio::runtime::Handle::current().block_on(set.join_all());
         for rt in runtimes {
             rt.shutdown_timeout(Duration::from_secs(1));
         }
     })
 }
 
-async fn device_handshake(
+fn device_handshake(
     session: Session,
     prms: NoiseParams,
     pk: Vec<u8>,
@@ -138,7 +140,7 @@ async fn device_handshake(
     match initialize_noise_server(prms, &*pk, SECRET) {
         Ok(n) => noise = n,
         Err(e) => {
-            query.reply_err([]).await.unwrap();
+            query.reply_err([]).wait().unwrap();
             panic!("Cannot initialize noise server: {}", e);
         }
     }
@@ -146,7 +148,7 @@ async fn device_handshake(
     match noise.read_message(&*payload.to_bytes(), &mut buf) {
         Ok(_) => println!("received first message OK"),
         Err(e) => {
-            query.reply_err([]).await.unwrap();
+            query.reply_err([]).wait().unwrap();
             panic!("Cannot resolve initial message: {}", e);
         }
     }
@@ -169,17 +171,17 @@ async fn device_handshake(
 
     let device_sub = session
         .declare_subscriber(device_keyexpr.clone())
-        .await
+        .wait()
         .unwrap();
     let ds_for_live = device_sub.clone();
     let (sched_writer, mut run_watch) = tokio::sync::mpsc::channel::<Sample>(1);
     let handle = tokio::runtime::Handle::current();
     let actual_consumer = handle.spawn_blocking(move || {
+        println!("actual_consumer started");
         while let Some(sample) = run_watch.blocking_recv() {
             let mut buf = vec![0u8; 65535];
             let decrypt = noise_transport.read_message(&*sample.payload().to_bytes(), &mut buf);
             if decrypt.is_err() {
-                // this is split to avoid DoS
                 eprintln!(
                     "received invalid payload on reserved channel for {}",
                     rsh256
@@ -191,7 +193,8 @@ async fn device_handshake(
         }
     });
 
-    let abort_secure_comm = handle.spawn_blocking(move || {
+    let secure_comm = handle.spawn_blocking(move || {
+        println!("secure_comm started");
         while let Ok(sample) = ds_for_live.recv() {
             sched_writer.blocking_send(sample).unwrap();
         }
@@ -203,6 +206,7 @@ async fn device_handshake(
         .wait()
         .unwrap();
     let hear_for_liveliness = handle.spawn_blocking(move || {
+        println!("hear_for_liveliness started");
         while let Ok(sample) = life_subscriber.recv() {
             match sample.kind() {
                 SampleKind::Put => println!("{} is alive", sample.key_expr()),
@@ -219,12 +223,9 @@ async fn device_handshake(
     });
 
     println!("sending final handshake message");
-    query
-        .reply(device_keyexpr, &buf[..len])
-        .wait()
-        .expect("failed to send handshake first response");
-    println!("sending final handshake message sent");
-    hear_for_liveliness.await
-        .and(abort_secure_comm.await)
-        .and(actual_consumer.await)
+    handle
+        .block_on(handle.spawn_blocking(move || { query.reply(device_keyexpr, &buf[..len]).wait().unwrap() }))
+        .and(handle.block_on(hear_for_liveliness))
+        .and(handle.block_on(secure_comm))
+        .and(handle.block_on(actual_consumer))
 }

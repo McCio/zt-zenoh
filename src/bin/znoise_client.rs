@@ -88,7 +88,7 @@ async fn main() {
     // -> e
     let len = noise.write_message(&[], &mut buf).unwrap();
     let reply = loop {
-        let reply = register(&rpk, &mut buf, &session, len).await.recv();
+        let reply = register(&rpk, &buf, &session, len).await.recv();
         match reply {
             Ok(reply) => break reply,
             Err(e) => eprintln!("Still nothing: {:?}", e),
@@ -102,7 +102,7 @@ async fn main() {
         .unwrap();
 
     let comm_keyexpr = result.key_expr();
-    // TODO should be able to to this in advance, as this is just secure_comm/public_key
+    // TODO should be able to to this in advance, as this is just secure_comm/{public_key}
     let _ = session
         .liveliness()
         .declare_token(comm_keyexpr)
@@ -130,7 +130,7 @@ async fn main() {
     println!("notified server of intent to hack planet.");
 }
 
-async fn register(rpk: &Option<Vec<u8>>, buf: &mut Vec<u8>, session: &Session, len: usize) -> FifoChannelHandler<Reply> {
+async fn register(rpk: &Option<Vec<u8>>, buf: &Vec<u8>, session: &Session, len: usize) -> FifoChannelHandler<Reply> {
     session
         .get(if rpk.is_some() {
             format!("secure_registration/{}", NOISE_DEF_PARAMS_SERVERPUB_KNOWN)
