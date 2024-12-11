@@ -4,4 +4,4 @@ The `src/bin/*.rs` files contain implementations of primitive functionalities, f
 
 Implementations are currently in progress and might be testing Zenoh rather than implementing the actual security extension.
 
-In the [docs/](docs/README) folder, you can find more documentation of the project and its roadmap.
+In the [`docs`](docs) folder, you can find more documentation of the project and its roadmap.
