@@ -1,4 +1,4 @@
-
+Have a look at collected [resources](resources.md).
 
 Theory
 ======
@@ -12,6 +12,8 @@ Theory
 [investigation.md](investigation.md) contains a list of topics that are being investigated.
 
 [blockchain_approach.md](blockchain_approach.md) contains a description of the blockchain approach.
+
+[hyperledger.md](hyperledger.md) contains a description of how hyperledger solves similar problems and their possible usage for us.
 
 Use Cases
 =========
